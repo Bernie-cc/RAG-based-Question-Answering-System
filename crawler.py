@@ -490,8 +490,8 @@ if __name__ == "__main__":
     crawler = WikiCrawler(
         initial_urls=initial_urls,
         max_depth=4,
-        max_pages_per_url=1000,
-        max_total_pages=10000
+        max_pages_per_url=5000,
+        max_total_pages=40000
     )
     
     crawler.crawl_all() 
