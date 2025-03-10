@@ -1,3 +1,15 @@
+"""
+This file is the crawler for the assignment 2.
+You can provide the initial urls and the max depth and the max pages per url.
+
+The crawler will crawl the urls and save the text data to the text_data directory.
+And it will save the metadata to the text_metadata.json file in the current directory.
+
+The crawler will also save the visited urls to the visited_urls.json file.
+"""
+
+
+
 import os
 import requests
 from bs4 import BeautifulSoup
@@ -10,10 +22,13 @@ import io
 import json
 from pathlib import Path
 from collections import deque
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def create_directories():
     """Create necessary data directories"""
-    directories = ['local_data/raw_data', 'local_data/process_data']
+    directories = ['text_data']  # Change to text_data directory
     for directory in directories:
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -22,8 +37,7 @@ class WikiCrawler:
     def __init__(self, 
                  initial_urls: List[str],
                  max_depth: int = 1,
-                 max_pages_per_url: int = 10,
-                 max_total_pages: int = 50):
+                 max_pages_per_url: int = 10):
         """
         Initialize crawler with constraints and configurations
         
@@ -31,7 +45,6 @@ class WikiCrawler:
             initial_urls: List of starting URLs to crawl
             max_depth: Maximum crawling depth from each initial URL
             max_pages_per_url: Maximum pages to crawl from each initial URL
-            max_total_pages: Maximum total pages to crawl across all initial URLs
             
         The crawler is configured with:
         - Allowed domains for crawling
@@ -42,17 +55,12 @@ class WikiCrawler:
         self.initial_urls = initial_urls
         self.max_depth = max_depth
         self.max_pages_per_url = max_pages_per_url
-        self.max_total_pages = max_total_pages
         
         self.visited_urls = set()
-        self.total_pages_crawled = 0
         self.pages_per_initial_url = {url: 0 for url in initial_urls}
         
-        self.metadata = {
-            'initial_urls': {},
-            'total_size_mb': 0,
-            'total_pages': 0
-        }
+        # Track processed data size for each initial URL
+        self.processed_data_size = {url: 0 for url in initial_urls}
         
         # List of allowed domains for crawling
         self.allowed_domains = [
@@ -67,52 +75,48 @@ class WikiCrawler:
         self.min_word_count = 100  # Minimum words required in content
         self.max_newline_ratio = 0.5  # Maximum ratio of newlines to content length
         
-    def download_html(self, url: str, raw_data_dir: str) -> tuple:
-        """Download webpage HTML content and save locally"""
+    def download_and_process_html(self, url: str, process_data_dir: str) -> tuple:
+        """Download webpage HTML content and directly process to text"""
         try:
-            response = requests.get(url)
+            # Disable SSL verification
+            response = requests.get(url, verify=False)
             response.raise_for_status()
             
-            filename = urlparse(url).path.strip('/')
-            filename = re.sub(r'[^a-zA-Z0-9]', '_', filename)
-            filename = f"{filename}.html"
+            # Extract text and links
+            text, links = self.extract_text_and_links(response.text, url)
             
-            filepath = os.path.join(raw_data_dir, filename)
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(response.text)
+            # Validate content quality
+            if not self.validate_content(text):
+                return None, None, 0
                 
-            return filename, response.text
+            # Clean and process text
+            text = self.clean_text(text)
+            
+            # Generate filename from full URL
+            filename = url.replace('://', '_').replace('/', '_').replace('?', '_').replace('&', '_')
+            filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', filename)
+            filename = f"{filename}.txt"
+            
+            # Save processed text
+            filepath = os.path.join(process_data_dir, filename)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(text)
+                
+            # Calculate file size in MB
+            file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                
+            return filename, links, file_size_mb
         
         except Exception as e:
-            print(f"Error downloading {url}: {e}")
-            return None, None
+            print(f"Error processing {url}: {e}")
+            return None, None, 0
 
-    def download_and_process_pdf(self, url: str, raw_data_dir: str, process_data_dir: str) -> tuple:
-        """
-        Download and process PDF content
-        
-        Args:
-            url: URL of the PDF file
-            raw_data_dir: Directory to save raw PDF
-            process_data_dir: Directory to save processed text
-            
-        Returns:
-            tuple: (filename, text content)
-        """
+    def download_and_process_pdf(self, url: str, process_data_dir: str) -> tuple:
+        """Download and process PDF content directly to text"""
         try:
-            # Download PDF
-            response = requests.get(url)
+            # Download PDF with SSL verification disabled
+            response = requests.get(url, verify=False)
             response.raise_for_status()
-            
-            # Generate filenames
-            filename = urlparse(url).path.split('/')[-1]
-            raw_filename = filename
-            processed_filename = filename.replace('.pdf', '.txt')
-            
-            # Save raw PDF
-            raw_filepath = os.path.join(raw_data_dir, raw_filename)
-            with open(raw_filepath, 'wb') as f:
-                f.write(response.content)
             
             # Extract text from PDF
             pdf_text = ""
@@ -122,16 +126,48 @@ class WikiCrawler:
             for page in pdf_reader.pages:
                 pdf_text += page.extract_text() + "\n"
             
+            # Clean and process text
+            pdf_text = self.clean_text(pdf_text)
+            
+            # Validate content quality
+            if not self.validate_content(pdf_text):
+                return None, 0
+            
+            # Generate filename from full URL
+            filename = url.replace('://', '_').replace('/', '_').replace('?', '_').replace('&', '_')
+            filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', filename)
+            filename = f"{filename}.txt"
+            
             # Save processed text
-            processed_filepath = os.path.join(process_data_dir, processed_filename)
-            with open(processed_filepath, 'w', encoding='utf-8') as f:
+            filepath = os.path.join(process_data_dir, filename)
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(pdf_text)
             
-            return raw_filename, pdf_text
+            # Calculate file size in MB
+            file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+            
+            return filename, file_size_mb
             
         except Exception as e:
             print(f"Error processing PDF {url}: {e}")
-            return None, None
+            return None, 0
+
+    def clean_text(self, text: str) -> str:
+        """Clean and normalize text content"""
+        # Remove excessive whitespace
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Normalize newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        # Remove leading/trailing whitespace from lines
+        lines = [line.strip() for line in text.split('\n')]
+        text = '\n'.join(lines)
+        
+        # Remove empty lines
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        
+        return text.strip()
 
     def extract_text_and_links(self, html_content: str, base_url: str) -> tuple:
         """
@@ -212,16 +248,6 @@ class WikiCrawler:
         
         return text, links
 
-    def process_and_save_text(self, text: str, filename: str, process_data_dir: str):
-        """Process and save extracted text"""
-        text = re.sub(r'\n+', '\n', text)
-        text = re.sub(r'\s+', ' ', text)
-        
-        processed_filename = filename.replace('.html', '.txt')
-        filepath = os.path.join(process_data_dir, processed_filename)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(text)
-
     def is_valid_url(self, url: str) -> bool:
         """
         Validate if a URL should be crawled based on multiple criteria
@@ -262,13 +288,12 @@ class WikiCrawler:
             
         return True
         
-    def validate_content(self, text: str, html_content: str = None) -> bool:
+    def validate_content(self, text: str) -> bool:
         """
         Validate content quality using multiple metrics
         
         Args:
             text: Extracted text content to validate
-            html_content: Original HTML content (optional, no longer used)
             
         Returns:
             bool: True if content meets quality standards, False otherwise
@@ -290,20 +315,7 @@ class WikiCrawler:
         if newline_ratio > self.max_newline_ratio:
             print(f"Too many newlines: ratio {newline_ratio:.2f}")
             return False
-            
-        # Validate content structure
-        # Check paragraph structure
-        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-        if not paragraphs:
-            print("No valid paragraphs found")
-            return False
-            
-        # Verify complete sentences
-        sentences = sum(1 for p in paragraphs for sent in p.split('.') if len(sent.strip()) > 20)
-        if sentences < 3:
-            print(f"Too few complete sentences: {sentences}")
-            return False
-            
+                        
         return True
 
     def crawl_url_bfs(self, start_url: str):
@@ -312,27 +324,14 @@ class WikiCrawler:
         
         Args:
             start_url: Initial URL to start crawling from
-            
-        Process:
-        1. Initialize queue with start URL
-        2. Process URLs level by level
-        3. Validate URLs and content
-        4. Extract and process content
-        5. Add new valid URLs to queue
-        
-        Features:
-        - URL validation before processing
-        - Content quality validation
-        - PDF handling
-        - Progress tracking
-        - Depth control
         """
         queue = deque([(start_url, 0)])
+        domain = urlparse(start_url).netloc
         
-        while queue and self.total_pages_crawled < self.max_total_pages:
+        while queue:
             url, depth = queue.popleft()
             
-            # 添加URL验证
+            # URL validation
             if not self.is_valid_url(url):
                 continue
                 
@@ -342,133 +341,183 @@ class WikiCrawler:
                 continue
             
             self.visited_urls.add(url)
-            print(f"Crawling: {url} (Depth: {depth})")
+            
+            # Print current status with domain and count
+            print(f"Crawling: {start_url} | Pages: {self.pages_per_initial_url[start_url]} | URL: {url} | Depth: {depth}")
             
             if url.lower().endswith('.pdf'):
-                filename, content = self.download_and_process_pdf(
-                    url, 'local_data/raw_data', 'local_data/process_data'
+                filename, file_size_mb = self.download_and_process_pdf(
+                    url, 'text_data'
                 )
-                if content and self.validate_content(content):
-                    self.total_pages_crawled += 1
+                if filename:
                     self.pages_per_initial_url[start_url] += 1
+                    self.processed_data_size[start_url] += file_size_mb
                 continue
             
-            filename, html_content = self.download_html(url, 'local_data/raw_data')
-            if html_content:
-                text, links = self.extract_text_and_links(html_content, url)
+            filename, links, file_size_mb = self.download_and_process_html(
+                url, 'text_data'
+            )
+            
+            if filename:
+                self.pages_per_initial_url[start_url] += 1
+                self.processed_data_size[start_url] += file_size_mb
                 
-                # 添加内容验证
-                if self.validate_content(text, html_content):
-                    self.process_and_save_text(text, filename, 'local_data/process_data')
-                    self.total_pages_crawled += 1
-                    self.pages_per_initial_url[start_url] += 1
-                    
-                    if depth < self.max_depth:
-                        for link in links:
-                            if link not in self.visited_urls:
-                                queue.append((link, depth + 1))
+                if depth < self.max_depth:
+                    for link in links:
+                        if link not in self.visited_urls:
+                            queue.append((link, depth + 1))
 
-    def calculate_file_sizes(self) -> Dict:
+    def load_metadata(self) -> Dict:
         """
-        Calculate sizes of downloaded files for each initial URL
+        Load existing metadata from file if it exists
         
         Returns:
-            Dict containing file size information
+            Dict containing previously saved metadata or empty structure if file doesn't exist
         """
-        raw_data_path = Path('local_data/raw_data')
-        processed_data_path = Path('local_data/process_data')
+        if os.path.exists('text_metadata.json'):
+            try:
+                with open('text_metadata.json', 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+                    print(f"Loaded existing metadata")
+                    
+                    # Update crawler state from metadata
+                    for url in self.initial_urls:
+                        if url in metadata['initial_urls']:
+                            # Get previously crawled pages count
+                            self.pages_per_initial_url[url] = metadata['initial_urls'][url]['subpages_crawled']
+                            
+                            # Get previously processed data size
+                            if 'size_mb' in metadata['initial_urls'][url]['processed_data']:
+                                self.processed_data_size[url] = metadata['initial_urls'][url]['processed_data']['size_mb']
+                    
+                    return metadata
+            except Exception as e:
+                print(f"Error loading metadata: {e}")
         
-        # Initialize size tracking for each initial URL
-        url_files = {url: {
-            'raw_files': [],
-            'processed_files': [],
-            'raw_size_mb': 0,
-            'processed_size_mb': 0,
-            'subpages': self.pages_per_initial_url[url]
-        } for url in self.initial_urls}
-        
-        # Calculate sizes for raw files
-        for file_path in raw_data_path.glob('*'):
-            size_mb = file_path.stat().st_size / (1024 * 1024)  # Convert to MB
-            
-            # Find which initial URL this file belongs to
-            for url in self.initial_urls:
-                if url in str(file_path):
-                    url_files[url]['raw_files'].append(str(file_path.name))
-                    url_files[url]['raw_size_mb'] += size_mb
-                    break
-        
-        # Calculate sizes for processed files
-        for file_path in processed_data_path.glob('*'):
-            size_mb = file_path.stat().st_size / (1024 * 1024)
-            
-            for url in self.initial_urls:
-                if url in str(file_path):
-                    url_files[url]['processed_files'].append(str(file_path.name))
-                    url_files[url]['processed_size_mb'] += size_mb
-                    break
-        
-        return url_files
+        # Return empty metadata structure if file doesn't exist or has errors
+        return {
+            'crawl_statistics': {
+                'max_depth_allowed': self.max_depth,
+                'max_pages_per_url_allowed': self.max_pages_per_url
+            },
+            'initial_urls': {},
+            'total_statistics': {
+                'total_pages': 0,
+                'total_processed_size_mb': 0,
+                'total_files': 0
+            }
+        }
 
     def save_metadata(self):
         """Save metadata about the crawling process"""
-        url_files = self.calculate_file_sizes()
+        # Try to load existing metadata first
+        metadata = self.load_metadata()
         
-        metadata = {
-            'crawl_statistics': {
-                'total_pages_crawled': self.total_pages_crawled,
-                'max_depth_allowed': self.max_depth,
-                'max_pages_per_url_allowed': self.max_pages_per_url,
-                'max_total_pages_allowed': self.max_total_pages
-            },
-            'initial_urls': {}
+        # Update crawl statistics
+        metadata['crawl_statistics'] = {
+            'max_depth_allowed': self.max_depth,
+            'max_pages_per_url_allowed': self.max_pages_per_url
         }
         
-        total_raw_size = 0
-        total_processed_size = 0
+        # 获取text_data目录中所有的txt文件
+        processed_files = list(Path('text_data').glob('*.txt'))
         
-        # Compile metadata for each initial URL
-        for url, stats in url_files.items():
+        # 为每个初始URL更新元数据条目
+        total_pages = 0
+        for url in self.initial_urls:
+            # 使用已经记录的数据
+            pages_crawled = self.pages_per_initial_url[url]
+            total_pages += pages_crawled
+            
+            # 获取域名，用于在文件名中匹配
+            url_domain = urlparse(url).netloc
+            
+            # 找出属于这个初始URL的文件
+            url_files = []
+            for file_path in processed_files:
+                file_name = file_path.name
+                # 检查文件名中是否包含该URL的域名
+                if url_domain in file_name:
+                    url_files.append(file_name)
+            
+            # 更新元数据
             metadata['initial_urls'][url] = {
-                'subpages_crawled': stats['subpages'],
-                'raw_data': {
-                    'size_mb': round(stats['raw_size_mb'], 2),
-                    'files': stats['raw_files']
-                },
+                'subpages_crawled': pages_crawled,
                 'processed_data': {
-                    'size_mb': round(stats['processed_size_mb'], 2),
-                    'files': stats['processed_files']
-                },
-                'total_size_mb': round(stats['raw_size_mb'] + stats['processed_size_mb'], 2)
+                    'size_mb': round(self.processed_data_size[url], 2),
+                    'file_count': len(url_files)
+                }
             }
-            total_raw_size += stats['raw_size_mb']
-            total_processed_size += stats['processed_size_mb']
         
-        # Add total sizes
+        # 更新总体统计
+        total_processed_size = sum(self.processed_data_size.values())
         metadata['total_statistics'] = {
-            'total_raw_size_mb': round(total_raw_size, 2),
+            'total_pages': total_pages,
             'total_processed_size_mb': round(total_processed_size, 2),
-            'total_size_mb': round(total_raw_size + total_processed_size, 2)
+            'total_files': len(processed_files)
         }
         
-        # Save metadata to file
-        with open('local_data/crawl_metadata.json', 'w', encoding='utf-8') as f:
+        # 保存更新后的元数据
+        with open('text_metadata.json', 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2)
         
-        print("\nMetadata saved to local_data/crawl_metadata.json")
+        # 保存已访问URL列表
+        with open('visited_urls.json', 'w', encoding='utf-8') as f:
+            json.dump(list(self.visited_urls), f, indent=2)
+        
+        print("\nMetadata saved to text_metadata.json")
+        print(f"Visited URLs ({len(self.visited_urls)}) saved to visited_urls.json")
+
+    def load_visited_urls(self) -> Set[str]:
+        """
+        Load previously visited URLs from file if it exists
+        
+        Returns:
+            Set of previously visited URLs
+        """
+        if os.path.exists('visited_urls.json'):
+            try:
+                with open('visited_urls.json', 'r', encoding='utf-8') as f:
+                    visited_urls = set(json.load(f))
+                    print(f"Loaded {len(visited_urls)} previously visited URLs")
+                    return visited_urls
+            except Exception as e:
+                print(f"Error loading visited URLs: {e}")
+        
+        print("No previous visited URLs found")
+        return set()
 
     def crawl_all(self):
-        """Crawl all initial URLs with progress tracking using BFS"""
+        """Crawl all initial URLs with progress tracking"""
         create_directories()
         
-        for url in tqdm(self.initial_urls, desc="Processing initial URLs"):
-            print(f"\nStarting crawl from: {url}")
-            self.crawl_url_bfs(url)
+        # Load previously visited URLs
+        previous_urls = self.load_visited_urls()
+        if previous_urls:
+            self.visited_urls = previous_urls
+        
+        # Load existing metadata
+        self.load_metadata()
+        
+        for url in self.initial_urls:
+            print(f"\n{'='*50}")
+            print(f"Starting crawl from: {url}")
+            print(f"{'='*50}")
+            print(f"Already crawled: {self.pages_per_initial_url[url]} pages")
             
+            # Only crawl if we haven't reached the limit
+            if self.pages_per_initial_url[url] < self.max_pages_per_url:
+                self.crawl_url_bfs(url)
+            else:
+                print(f"Skipping {url}: Already reached max pages limit")
+            
+            print(f"Completed {url}: {self.pages_per_initial_url[url]} pages crawled")
+        
         print(f"\nCrawling completed:")
-        print(f"Total pages crawled: {self.total_pages_crawled}")
+        total_pages = sum(self.pages_per_initial_url.values())
+        print(f"Total pages crawled: {total_pages}")
         for url, count in self.pages_per_initial_url.items():
-            print(f"Pages from {url}: {count}")
+            print(f"Pages from {urlparse(url).netloc}: {count}")
         
         # Save metadata after crawling
         self.save_metadata()
@@ -484,14 +533,12 @@ if __name__ == "__main__":
         "https://www.pittsburghpa.gov/City-Government/Finances-Budget/Taxes/Tax-Forms", 
         "https://www.cmu.edu/about/",
         "https://apps.pittsburghpa.gov/redtail/images/23255_2024_Operating_Budget.pdf"
-         # Add more URLs here
     ]
     
     crawler = WikiCrawler(
         initial_urls=initial_urls,
         max_depth=4,
-        max_pages_per_url=5000,
-        max_total_pages=40000
+        max_pages_per_url=2000
     )
     
     crawler.crawl_all() 
