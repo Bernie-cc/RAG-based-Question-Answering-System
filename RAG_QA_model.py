@@ -1,3 +1,12 @@
+
+"""
+This file is the RAG_QA_model for the assignment 2.
+You can provide the question and the context and the model.
+
+The RAG_QA_model will answer the question based on the context.
+
+"""
+
 from llama_cpp import Llama
 from typing import List, Dict, Any
 from search import *
@@ -25,8 +34,9 @@ def get_model_response(
     model: Llama, 
     query: str, 
     context: str, 
-    temperature: float = 0.7, 
-    max_tokens: int = 512
+    temperature: float = LLM["temperature"], 
+    max_tokens: int = LLM["max_tokens"],
+    top_p: float = LLM["top_p"]
 ) -> str:
     """
     Get response from the model
@@ -41,18 +51,39 @@ def get_model_response(
     Returns:
         str: Model's response
     """
-    prompt = f"""Based on the following context, please answer the question.
-    
-Context: {context}
+    prompt = f"""You are an intelligent assistant specializing in answering questions about Pittsburgh and Carnegie Mellon University (CMU).
+    You use a retrieval system to access highly relevant documents related to Pittsburgh and CMU. Based on the information retrieved, generate a clear, concise, and factual response.
 
-Question: {query}
+### Instructions:
+1. Carefully read the retrieved context provided below.
+2. Use the information in the retrieved context and your own knowledge to answer the question accurately. Do not add any information that is not present in the retrieved context.
+3. Your response should be concise, factual, and directly address the question.
 
-Answer: """
+---
+### Example Input:
+**User Question:** Where is Carnegie Mellon University located?
+
+**Retrieved Context:**
+1. Carnegie Mellon University is located in Pittsburgh, Pennsylvania.
+2. The campus is situated in the Oakland neighborhood of Pittsburgh.
+
+**Your Answer:**
+Carnegie Mellon University is located in Pittsburgh, Pennsylvania, specifically in the Oakland neighborhood.
+
+---
+### Now, answer the following question:**
+**User Question:** {query}
+
+**Retrieved Context:**
+{context}
+
+**Your Answer:**"""
     
     response = model.create_completion(
         prompt,
-        max_tokens=LLM["max_tokens"],
-        temperature=LLM["temperature"],
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
         stop=["Question:", "\n\n"],
         echo=False
     )
@@ -93,11 +124,12 @@ def main():
     
     # Example query
     # read question from file
-    with open("test_data/question_Zijin.txt", "r") as f:
+    with open(PATHS["question"], "r") as f:
         querys = f.readlines()
-
+    
+    # querys = querys[:10]
     # remove change line character
-    querys = [query.strip() for query in querys]
+    querys = [query.strip() for query in querys if query.strip()]
 
     answers = {}
 
@@ -111,7 +143,7 @@ def main():
         search_results = search_documents(
             query=query,
             db=db,
-            top_k=3,  # Adjust based on needs
+            top_k=2,  # Adjust based on needs
             score_threshold=0.5
         )
     
@@ -125,8 +157,8 @@ def main():
         # print(format_search_results(search_results))
     
     # write answers to json format with question index and answer
-    with open("test_data/generated_answers_Zijin.json", "w") as f:  
-        json.dump(answers, f)
+    with open(PATHS["generated_answer"], "w") as f:  
+        json.dump(answers, f, indent=2, separators=(',\n', ': '), )
 
 
 if __name__ == "__main__":

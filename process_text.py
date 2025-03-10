@@ -112,23 +112,21 @@ def split_documents(documents: List[Document], chunk_size: int = TEXT_SPLITTING[
 
 def get_embeddings(chunks, embedding_model):
     """
-    Remove similar chunks based on embedding similarity and return embeddings
+    Generate embeddings for all chunks
     
     Args:
         chunks: List of document chunks
         embedding_model: Embedding model to use
-        similarity_threshold: Threshold for similarity
         
     Returns:
         Tuple of (unique_chunks, embeddings_dict) where embeddings_dict maps chunk_id to embedding
     """
-    print(f"Removing similar chunks from {len(chunks)} chunks...")
     
     # Generate embeddings for all chunks
     texts = [chunk.page_content for chunk in chunks]
     
     # Process in batches to avoid memory issues
-    batch_size = 100
+    batch_size = 1000
     total_batches = (len(texts) + batch_size - 1) // batch_size
     all_embeddings = []
     
@@ -161,6 +159,10 @@ def create_db_with_embeddings(documents, embeddings, embedding_model):
     Returns:
         Chroma: The created vector database
     """
+
+    if len(documents) != len(embeddings):
+        raise ValueError(f"Number of documents ({len(documents)}) does not match number of embeddings ({len(embeddings)})")
+    
     total_chunks = len(documents)
     print(f"Creating vector database with {total_chunks} chunks using pre-computed embeddings...")
     
@@ -253,13 +255,16 @@ def main():
     
     # Initialize embedding model
     embedding_model = HuggingFaceEmbeddings(
-        model_name=EMBEDDING["model_name"],
+        model_name=EMBEDDING_TRAINING["model_save_path"],
         model_kwargs={'device': EMBEDDING["device"]},
         encode_kwargs={'normalize_embeddings': EMBEDDING["normalize_embeddings"]}
     )
     
     # Remove similar chunks and get embeddings
-    embeddings = get_embeddings(chunks, embedding_model)
+    # embeddings = get_embeddings(chunks, embedding_model)
+
+    with open("document_embeddings.pkl", "rb") as f:
+        embeddings = pickle.load(f)
 
     # Create vector database with pre-computed embeddings
     db = create_db_with_embeddings(chunks, embeddings, embedding_model)

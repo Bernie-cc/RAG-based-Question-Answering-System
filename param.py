@@ -56,8 +56,8 @@ LLM = {
     "model_path": "/Users/berniec/.cache/huggingface/hub/models--TheBloke--TinyLlama-1.1B-Chat-v1.0-GGUF/snapshots/52e7645ba7c309695bec7ac98f4f005b139cf465/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
     "temperature": 0.7,
     "n_ctx": 2048,
-    "max_tokens": 256
-    
+    "max_tokens": 256,
+    "top_p": 0.9
 }
 
 # RAG parameters
@@ -75,8 +75,36 @@ PATHS = {
     "text_data": "text_data",
     "embeddings": "document_embeddings.pkl",
     "vector_db": "vector_db",
-    "metadata": "vector_db/metadata.json"
+    "metadata": "vector_db/metadata.json",
+    "question": "data/test/questions.txt",
+    "answer": "data/test/reference_answers.json",
+    "generated_answer": "data/test/generated_answers.json"
 }
+
+# Training parameters for embedding model
+EMBEDDING_TRAINING = {
+    "train_batch_size": 32,
+    "num_epochs": 15,
+    "learning_rate": 2e-5,
+    "warmup_ratio": 0.1,
+    "max_seq_length": 512,
+    "model_save_path": "trained_embeddings",
+    "save_best_model": True,
+}
+
+'''
+for the small training size, we can try the following parameters
+EMBEDDING_TRAINING = {
+    "train_batch_size": 16,     # 减小batch size
+    "num_epochs": 20,           # 可以增加epoch数
+    "learning_rate": 1e-5,      # 降低学习率
+    "warmup_ratio": 0.2,        # 增加warmup比例
+    "max_seq_length": 512,
+    "model_save_path": "trained_embeddings",
+    "save_best_model": True,
+}
+'''
+
 
 # 测试模式参数
 TEST_MODE = {

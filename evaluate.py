@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 import re
 import json
 from sklearn.metrics import precision_score, recall_score, accuracy_score
-
+from param import *
 def evaluate_qa(
     ground_truth: Dict[str, str],
     predictions: Dict[str, str],
@@ -113,6 +113,17 @@ def save_evaluation_results(
             "recall": evaluation_results["recall"],
             "accuracy": evaluation_results["accuracy"]
         },
+        "embedding": {
+            "model_name": EMBEDDING["model_name"],
+            "device": EMBEDDING["device"],
+            "normalize_embeddings": EMBEDDING["normalize_embeddings"]
+        },
+        "embedding_training": {
+            "train_batch_size": EMBEDDING_TRAINING["train_batch_size"],
+            "num_epochs": EMBEDDING_TRAINING["num_epochs"],
+            "learning_rate": EMBEDDING_TRAINING["learning_rate"],
+            "warmup_ratio": EMBEDDING_TRAINING["warmup_ratio"]
+        },
         "models": {
             "embedding": {
                 "model_name": EMBEDDING["model_name"],
@@ -150,13 +161,13 @@ def save_evaluation_results(
 
 if __name__ == "__main__":
     # Load data
-    with open("test_data/reference_answers_Zijin.json", "r") as f:
+    with open(PATHS["answer"], "r") as f:
         ground_truth = json.load(f)
-    with open("test_data/generated_answers_Zijin.json", "r") as f:
-        predictions = json.load(f)
+    with open(PATHS["generated_answer"], "r") as f:
+        generated_answer = json.load(f)
     
     # Evaluate
-    result = evaluate_qa(ground_truth, predictions)
+    result = evaluate_qa(ground_truth, generated_answer)
     
     # Print overall results
     print("\nOverall Results:")
