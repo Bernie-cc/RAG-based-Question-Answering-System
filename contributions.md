@@ -6,11 +6,11 @@ Zijin Cui
 - Implement the evaluation
 
 Shun Li:
-- Web Scrape for events and sports.
+- Web scrape for events and sports.
 - Experiement on different Retrievers and prompts to improve performance.
 
 Youyou Huang:
-- Web Scrape for Music and Culture.
+- Web scrape for Music and Culture.
 - Implement Baseline Closed-book evaluation.
 - Report writing.
 

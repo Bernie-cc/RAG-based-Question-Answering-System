@@ -67,7 +67,10 @@ pip install -r requirements.txt
 You can run the crawler by providing the initial urls and the max depth and the max pages per url. It will save the text data to the text_data directory and the metadata to the text_metadata.json file in the current directory.
 
 ```bash
+cd web_scrape
 python crawler.py
+python events.py
+python sports.py
 ```
 
 4. Run the document processor
