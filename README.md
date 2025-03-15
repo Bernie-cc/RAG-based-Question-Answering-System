@@ -98,6 +98,13 @@ python evaluate.py
 
 You can find the results in the [system_output_1.json](system_output_1.json) file.
 
+## Contributors
+
+
+- [Shun Li](https://github.com/shunli2000) 
+- [Youyou Huang](https://github.com/youyouh511) 
+- [Zijin Cui](https://github.com/Bernie-cc) 
+
 ## Related Resources
 
 - [LangChain Documentation](https://python.langchain.com/docs/get_started/introduction.html)
