@@ -8,8 +8,10 @@ import argparse
 import time
 from typing import List, Dict, Any
 
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+
+from langchain.vectorstores import Chroma
+from langchain.embeddings import HuggingFaceEmbeddings
+from sentence_transformers import CrossEncoder
 from param import EMBEDDING, VECTOR_DB, SEARCH
 
 def initialize_vector_db(persist_directory: str = VECTOR_DB["persist_directory"]):
@@ -124,6 +126,7 @@ def format_search_results(results: List[Dict[str, Any]]) -> str:
     
     return "\n".join(formatted_output)
 
+
 def main():
     """
     Main function to run the search functionality from command line
@@ -140,9 +143,19 @@ def main():
         top_k=SEARCH["top_k"],
         score_threshold=SEARCH["score_threshold"]
     )
+
+    # Rerank
+    reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    results2 = [result for result in results[db]]
+    pairs = [(query, doc.content) for doc in results2]
+    scores = reranker.predict(pairs)
+    reranked_results = [doc for _, doc in sorted(zip(scores, results2), key=lambda x:x[0], reverse=True)]
+    top_docs = reranked_results[:3]
+
     # # Display results
     print("\nSearch Results:")
-    print(format_search_results(results))
+    print(format_search_results(top_docs))
+    
 
 if __name__ == "__main__":
     main()

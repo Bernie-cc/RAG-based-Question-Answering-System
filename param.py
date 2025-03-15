@@ -2,7 +2,7 @@
 Configuration parameters for the RAG system.
 This file centralizes all parameters used across different components.
 """
-
+import torch
 # Crawler parameters
 CRAWLER_CONFIG = {
     "max_depth": 4,
@@ -30,9 +30,9 @@ TEXT_SPLITTING = {
 # Embedding parameters
 EMBEDDING = {
     "model_name": "sentence-transformers/all-MiniLM-L6-v2",    # sentence-transformers/multi-qa-mpnet-base-dot-v1  require too much computing resource
-    "device": "cpu",
+    "device": "cuda" if torch.cuda.is_available() else "cpu",
     "normalize_embeddings": True,
-    "batch_size": 32,
+    "batch_size": 64,
     "output_file": "document_embeddings.pkl",
     "metadata_file": "embedding_metadata.json"
 }
@@ -46,7 +46,7 @@ VECTOR_DB = {
 
 # Search parameters
 SEARCH = {
-    "top_k": 3,
+    "top_k": 6,
     "score_threshold": 0.5  # Minimum similarity score to consider
 }
 
@@ -56,18 +56,43 @@ LLM = {
     "model_path": "/Users/berniec/.cache/huggingface/hub/models--TheBloke--TinyLlama-1.1B-Chat-v1.0-GGUF/snapshots/52e7645ba7c309695bec7ac98f4f005b139cf465/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
     "temperature": 0.7,
     "n_ctx": 2048,
-    "max_tokens": 256,
+    "max_tokens": 1024,
     "top_p": 0.9
+}
+
+LLM2 = {
+    "model_id"  : "google/gemma-2-2b-it",
+    "task"      : "document-question-answering",
+    
 }
 
 # RAG parameters
 RAG = {
-    "prompt_template": """Answer the question based on the context provided. 
-Context: {context}
+    "prompt_template": 
+    """
+    ##Example:
+    **Retrieved Context:**
+    Carnegie Mellon University is located in Pittsburgh, Pennsylvania.
+    The campus is situated in the Oakland neighborhood of Pittsburgh.
 
-Question: {query}
+    **Question:** Where is Carnegie Mellon University located?
 
-Answer:"""
+    **Good Answer:**
+    Oakland, Pittsburgh, Pennsylvania.
+
+    **Bad Answer:**
+    Carnegie Mellon University is located in Pittsburgh, Pennsylvania, specifially in the Oakland neighborhood.
+    --
+    Now, Use the retrieved context and your own knowledge to answer the following question:
+
+    **Retrieved Context:**
+    {context}
+
+    **Question:** {query}
+
+    Your 1-line answer should be very direct and concise, like good answer above without explanation and other information.
+    **Your Answer:**
+    """
 }
 
 # File paths

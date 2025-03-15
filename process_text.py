@@ -13,10 +13,11 @@ import argparse
 from pathlib import Path
 from typing import List, Dict
 import time
+import gc
 
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain.embeddings import HuggingFaceEmbeddings
 from param import *
 import json
 from langchain_community.vectorstores import Chroma
@@ -244,9 +245,10 @@ def create_db_with_embeddings(documents, embeddings, embedding_model):
     print(f"Metadata saved to {metadata_path}")
     
     return db
+    
 
 
-def main(): 
+def main():
     # Load documents
     documents = load_texts()
 
@@ -255,21 +257,21 @@ def main():
     
     # Initialize embedding model
     embedding_model = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_TRAINING["model_save_path"],
+        model_name=EMBEDDING['model_name'],
         model_kwargs={'device': EMBEDDING["device"]},
         encode_kwargs={'normalize_embeddings': EMBEDDING["normalize_embeddings"]}
     )
     
     # Remove similar chunks and get embeddings
-    # embeddings = get_embeddings(chunks, embedding_model)
-
-    with open("document_embeddings.pkl", "rb") as f:
-        embeddings = pickle.load(f)
+    chunks, embeddings = get_embeddings(chunks, embedding_model)
+    gc.collect()
+    torch.cuda.empty_cache()
 
     # Create vector database with pre-computed embeddings
     db = create_db_with_embeddings(chunks, embeddings, embedding_model)
 
     print("Vector database created successfully!")
+
 
 if __name__ == "__main__":
     main()
