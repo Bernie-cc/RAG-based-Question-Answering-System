@@ -71,6 +71,7 @@ cd web_scrape
 python crawler.py
 python events.py
 python sports.py
+cd ..
 ```
 
 4. Run the document processor
